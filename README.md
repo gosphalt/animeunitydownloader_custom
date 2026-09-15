@@ -167,3 +167,14 @@ python3 main.py --custom-path <custom_path>
 ```bash
 python3 main.py --custom-path /path/to/external/drive
 ```
+
+## Parallel Downloads
+
+By default, up to 2 episodes are downloaded concurrently. Use `--parallel-downloads <N>` to change this, on either script.
+
+```bash
+python3 anime_downloader.py https://www.animeunity.so/anime/1517-yuru-yuri --parallel-downloads 5
+python3 main.py --parallel-downloads 5
+```
+
+Increasing this value speeds up a batch of downloads but also increases load on both your connection and the source site; raise it gradually and watch for failed/retried episodes.

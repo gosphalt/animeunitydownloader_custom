@@ -15,12 +15,13 @@ import asyncio
 import random
 import time
 from pathlib import Path
+from typing import NamedTuple
 
 import requests
 from rich.console import Console
 from rich.live import Live
 
-from src.config import parse_arguments, prepare_headers
+from src.config import DOWNLOAD_WORKERS, parse_arguments, prepare_headers
 from src.crawler.crawler import Crawler
 from src.crawler.crawler_utils import extract_download_link
 from src.download_utils import (
@@ -31,6 +32,14 @@ from src.download_utils import (
 from src.file_utils import create_download_directory
 from src.general_utils import clear_terminal, fetch_page, fetch_page_httpx
 from src.progress_utils import create_progress_bar, create_progress_table
+
+
+class EpisodeFilters(NamedTuple):
+    """Episode selection filters shared by the download and check flows."""
+
+    start_episode: int | None = None
+    end_episode: int | None = None
+    episodes: list[int] | None = None
 
 
 def download_episode(
@@ -71,13 +80,24 @@ def process_video_url(video_url: str, download_path: str, task_info: tuple) -> N
     download_episode(download_link, download_path, task_info)
 
 
-def download_anime(anime_name: str, video_urls: list[str], download_path: str) -> None:
+def download_anime(
+    anime_name: str,
+    video_urls: list[str],
+    download_path: str,
+    workers: int = DOWNLOAD_WORKERS,
+) -> None:
     """Download episodes of a specified anime from provided video URLs."""
     job_progress = create_progress_bar()
     progress_table = create_progress_table(anime_name, job_progress)
 
     with Live(progress_table, refresh_per_second=10):
-        run_in_parallel(process_video_url, video_urls, job_progress, download_path)
+        run_in_parallel(
+            process_video_url,
+            video_urls,
+            job_progress,
+            download_path,
+            workers=workers,
+        )
 
 
 def print_check_report(
@@ -96,9 +116,7 @@ def print_check_report(
 
 async def check_anime_download(
     url: str,
-    start_episode: int | None = None,
-    end_episode: int | None = None,
-    episodes: list[int] | None = None,
+    filters: EpisodeFilters = EpisodeFilters(),
 ) -> None:
     """Validate a URL and report the anime name and matching episodes.
 
@@ -108,9 +126,9 @@ async def check_anime_download(
     soup = fetch_page_httpx(url)
     crawler = Crawler(
         url=url,
-        start_episode=start_episode,
-        end_episode=end_episode,
-        episodes=episodes,
+        start_episode=filters.start_episode,
+        end_episode=filters.end_episode,
+        episodes=filters.episodes,
     )
     anime_name = crawler.extract_anime_name(soup, url)
     matched_numbers = await crawler.get_matching_episode_numbers()
@@ -119,23 +137,23 @@ async def check_anime_download(
 
 async def process_anime_download(
     url: str,
-    start_episode: int | None = None,
-    end_episode: int | None = None,
-    episodes: list[int] | None = None,
+    filters: EpisodeFilters = EpisodeFilters(),
+    *,
     custom_path: str | None = None,
+    workers: int = DOWNLOAD_WORKERS,
 ) -> None:
     """Process the download of an anime from the specified URL."""
     soup = fetch_page_httpx(url)
     crawler = Crawler(
         url=url,
-        start_episode=start_episode,
-        end_episode=end_episode,
-        episodes=episodes,
+        start_episode=filters.start_episode,
+        end_episode=filters.end_episode,
+        episodes=filters.episodes,
     )
     anime_name = crawler.extract_anime_name(soup, url)
     download_path = create_download_directory(anime_name, custom_path=custom_path)
     video_urls = await crawler.collect_video_urls()
-    download_anime(anime_name, video_urls, download_path)
+    download_anime(anime_name, video_urls, download_path, workers=workers)
 
 
 def parse_episodes_list(episodes_raw: list[str] | None) -> list[int] | None:
@@ -157,22 +175,17 @@ async def main() -> None:
     clear_terminal()
     args = parse_arguments()
     episodes = parse_episodes_list(args.episodes)
+    filters = EpisodeFilters(args.start, args.end, episodes)
 
     if args.check:
-        await check_anime_download(
-            args.url,
-            start_episode=args.start,
-            end_episode=args.end,
-            episodes=episodes,
-        )
+        await check_anime_download(args.url, filters)
         return
 
     await process_anime_download(
         args.url,
-        start_episode=args.start,
-        end_episode=args.end,
-        episodes=episodes,
+        filters,
         custom_path=args.custom_path,
+        workers=args.parallel_downloads,
     )
 
 

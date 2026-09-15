@@ -4,7 +4,7 @@ These configurations aim to improve modularity and readability by consolidating 
 into a single location.
 """
 
-from argparse import ArgumentParser, Namespace
+from argparse import ArgumentParser, ArgumentTypeError, Namespace
 
 from fake_useragent import UserAgent
 
@@ -108,6 +108,22 @@ def prepare_headers() -> dict[str, str]:
 # ============================
 # Argument Parsing
 # ============================
+def positive_int(value: str) -> int:
+    """Parse a string as a positive integer, for use as an argparse type."""
+    try:
+        parsed = int(value)
+
+    except ValueError as val_err:
+        message = f"invalid positive int value: {value!r}"
+        raise ArgumentTypeError(message) from val_err
+
+    if parsed < 1:
+        message = f"value must be at least 1, got {parsed}"
+        raise ArgumentTypeError(message)
+
+    return parsed
+
+
 def add_common_arguments(parser: ArgumentParser) -> None:
     """Add arguments shared across parsers."""
     parser.add_argument(
@@ -115,6 +131,16 @@ def add_common_arguments(parser: ArgumentParser) -> None:
         type=str,
         default=None,
         help="The directory where the downloaded content will be saved.",
+    )
+    parser.add_argument(
+        "--parallel-downloads",
+        type=positive_int,
+        default=DOWNLOAD_WORKERS,
+        metavar="N",
+        help=(
+            "Number of episodes to download concurrently "
+            "(default: %(default)s)."
+        ),
     )
     parser.add_argument(
         "--check",

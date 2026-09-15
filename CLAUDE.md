@@ -30,6 +30,12 @@ python3 anime_downloader.py <anime_url> --check [--start N] [--end N] [--episode
 python3 main.py --check
 ```
 
+Control download concurrency (`--parallel-downloads N`, valid on both entry points; default 2, from `src/config.DOWNLOAD_WORKERS`):
+```bash
+python3 anime_downloader.py <anime_url> --parallel-downloads 5
+python3 main.py --parallel-downloads 5
+```
+
 Lint (CI runs Pylint over all tracked `.py` files, see `.github/workflows/pylint.yml`):
 ```bash
 python -m pylint $(git ls-files '*.py')
@@ -41,15 +47,15 @@ There is no test suite in this repository.
 ## Architecture
 
 Entry points:
-- `anime_downloader.py` — downloads a single anime given a URL; also exposes `parse_arguments`, `process_anime_download`, and `download_anime`, which `main.py` reuses.
-- `main.py` — batch mode; reads URLs from `URLs.txt` and calls `process_anime_download` for each one, then clears the file.
+- `anime_downloader.py` — downloads a single anime given a URL; also exposes `parse_arguments`, `process_anime_download`, `check_anime_download`, and `download_anime`, which `main.py` reuses. `EpisodeFilters` (a `NamedTuple` of `start_episode`/`end_episode`/`episodes`) bundles the episode-selection filters shared by `process_anime_download` and `check_anime_download`, keeping both signatures short.
+- `main.py` — batch mode; reads URLs from `URLs.txt` and calls `process_anime_download` (or `check_anime_download` under `--check`) for each one, then clears the file (skipped under `--check`).
 
 Pipeline for a single anime (`process_anime_download` in `anime_downloader.py`):
 1. `src/general_utils.fetch_page_httpx` fetches the anime's landing page.
 2. `src/crawler/crawler.py::Crawler` is constructed from the URL: it derives the AnimeUnity `info_api` URL, fetches the total episode count, and extracts the anime name (`Crawler.extract_anime_name`, with several fallback strategies: title tag → `<title>` → `og:title` meta → URL slug).
 3. `src/file_utils.create_download_directory` creates `Downloads/<sanitized anime name>/` (or `<custom_path>/Downloads/...`).
 4. `Crawler.collect_video_urls` (async): fetches episode IDs from the info API in batches of `BATCH_SIZE` (120, to avoid request failures on long series), filters them by `--episodes` or `--start`/`--end` range via the shared `Crawler._get_matching_episodes` helper, builds `embed-url/<id>` URLs, and concurrently resolves each to a real video URL (bounded by `CRAWLER_WORKERS` via an `asyncio.Semaphore`). `Crawler.get_matching_episode_numbers` reuses the same filtering helper but stops before resolving embed URLs, which is what powers `--check` (see `anime_downloader.check_anime_download`).
-5. `download_anime` runs `src/download_utils.run_in_parallel` in a `ThreadPoolExecutor` (bounded by `DOWNLOAD_WORKERS`) inside a `rich.live.Live` context to download each episode with a per-episode and overall progress bar (`src/progress_utils.py`).
+5. `download_anime` runs `src/download_utils.run_in_parallel` in a `ThreadPoolExecutor` (bounded by the `workers` argument, which flows from `--parallel-downloads` down through `process_anime_download` → `download_anime` → `run_in_parallel`; defaults to `DOWNLOAD_WORKERS`) inside a `rich.live.Live` context to download each episode with a per-episode and overall progress bar (`src/progress_utils.py`).
 6. Each episode download (`download_episode` → `process_video_url` → `extract_download_link`) fetches the embed page, regex-extracts `window.downloadUrl` from inline scripts (`src/config.DOWNLOAD_LINK_PATTERN`), then streams the file to disk with a chunk size chosen by file size (`src/download_utils.get_chunk_size`, thresholds in `src/config.THRESHOLDS`).
 
 Networking / anti-bot handling (`src/general_utils.py`, `src/crawler/crawler_utils.py`):
