@@ -69,10 +69,21 @@ class Crawler:
 
     async def collect_video_urls(self) -> list[str]:
         """Collect a list of video URLs by concurrently fetching each embed URL."""
-        episode_ids = await self._collect_episode_ids()
+        matching_episodes = await self._get_matching_episodes()
+        episode_ids = [episode[0] for episode in matching_episodes]
         embed_urls = self._generate_episode_embed_urls(episode_ids)
         tasks = [self._get_video_url(embed_url) for embed_url in embed_urls]
         return await asyncio.gather(*tasks)
+
+    async def get_matching_episode_numbers(self) -> list[str]:
+        """Return the episode numbers matching the configured filters.
+
+        Unlike `collect_video_urls`, this does not resolve embed pages to video
+        URLs, so it can be used to preview a download without fetching any
+        episode page.
+        """
+        matching_episodes = await self._get_matching_episodes()
+        return [episode[1] for episode in matching_episodes]
 
     # Static methods
     @staticmethod
@@ -169,22 +180,21 @@ class Crawler:
 
         return [(info["id"], info["number"]) for info in all_episode_infos]
 
-    async def _collect_episode_ids(self) -> list[str]:
-        """Retrieve a list of episode IDs from a given URL."""
+    async def _get_matching_episodes(self) -> list[tuple[int, str]]:
+        """Retrieve the (id, number) pairs matching the configured filters."""
         episodes = await self._get_episode_ids()
         if self.episodes:
             episodes_set = {float(episode) for episode in self.episodes}
             return [
-                episode[0]
+                episode
                 for episode in episodes
                 if _safe_float(episode[1]) in episodes_set
             ]
 
         validate_episode_range(self.start_episode, self.end_episode, self.num_episodes)
-        episodes = await self._get_episode_ids()
 
         return [
-            episode[0]
+            episode
             for episode in episodes
             if episode_in_range(episode[1], self.start_episode, self.end_episode)
         ]

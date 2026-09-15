@@ -114,6 +114,21 @@ python3 anime_downloader.py https://www.animeunity.so/anime/1517-yuru-yuri --epi
 
 This is useful when you already have some episodes and only need to download the missing ones, avoiding re-downloading an entire range.
 
+## Analyzing Links Before Downloading
+
+To check a URL without downloading anything, add the `--check` flag. This validates the URL, prints the anime name, the total number of episodes available, and which ones match the given filters (`--start`/`--end`/`--episodes`).
+
+```bash
+python3 anime_downloader.py https://www.animeunity.so/anime/1517-yuru-yuri --check
+python3 anime_downloader.py https://www.animeunity.so/anime/1517-yuru-yuri --check --start 5 --end 10
+```
+
+`--check` is also supported by `main.py` for batch URLs; in this mode `URLs.txt` is left untouched (not cleared) so you can run the real download afterwards.
+
+```bash
+python3 main.py --check
+```
+
 ## Batch Download
 
 ### Usage

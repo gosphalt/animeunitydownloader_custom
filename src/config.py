@@ -117,6 +117,14 @@ def add_common_arguments(parser: ArgumentParser) -> None:
         help="The directory where the downloaded content will be saved.",
     )
     parser.add_argument(
+        "--check",
+        action="store_true",
+        help=(
+            "Analyze the URL(s) without downloading: show the anime name, the "
+            "total number of episodes, and which ones match the given filters."
+        ),
+    )
+    parser.add_argument(
         "--version",
         action="version",
         version=get_version_string(),

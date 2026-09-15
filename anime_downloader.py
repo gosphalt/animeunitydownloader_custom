@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 
 import requests
+from rich.console import Console
 from rich.live import Live
 
 from src.config import parse_arguments, prepare_headers
@@ -79,6 +80,43 @@ def download_anime(anime_name: str, video_urls: list[str], download_path: str) -
         run_in_parallel(process_video_url, video_urls, job_progress, download_path)
 
 
+def print_check_report(
+    anime_name: str,
+    num_episodes: int,
+    matched_numbers: list[str],
+) -> None:
+    """Print a summary of an anime URL without downloading anything."""
+    console = Console()
+    console.print(f"[b]{anime_name}[/b]")
+    console.print(f"Total episodes available: {num_episodes}")
+    console.print(f"Episodes matching filters: {len(matched_numbers)}")
+    if matched_numbers:
+        console.print(f"Episode numbers: {', '.join(matched_numbers)}")
+
+
+async def check_anime_download(
+    url: str,
+    start_episode: int | None = None,
+    end_episode: int | None = None,
+    episodes: list[int] | None = None,
+) -> None:
+    """Validate a URL and report the anime name and matching episodes.
+
+    Unlike `process_anime_download`, this doesn't resolve embed pages or
+    download any file, so it's safe to use as a quick preview.
+    """
+    soup = fetch_page_httpx(url)
+    crawler = Crawler(
+        url=url,
+        start_episode=start_episode,
+        end_episode=end_episode,
+        episodes=episodes,
+    )
+    anime_name = crawler.extract_anime_name(soup, url)
+    matched_numbers = await crawler.get_matching_episode_numbers()
+    print_check_report(anime_name, crawler.num_episodes, matched_numbers)
+
+
 async def process_anime_download(
     url: str,
     start_episode: int | None = None,
@@ -119,6 +157,16 @@ async def main() -> None:
     clear_terminal()
     args = parse_arguments()
     episodes = parse_episodes_list(args.episodes)
+
+    if args.check:
+        await check_anime_download(
+            args.url,
+            start_episode=args.start,
+            end_episode=args.end,
+            episodes=episodes,
+        )
+        return
+
     await process_anime_download(
         args.url,
         start_episode=args.start,
