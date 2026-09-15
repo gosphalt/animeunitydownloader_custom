@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import random
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import NamedTuple
 
@@ -21,7 +22,12 @@ import requests
 from rich.console import Console
 from rich.live import Live
 
-from src.config import DOWNLOAD_WORKERS, parse_arguments, prepare_headers
+from src.config import (
+    CRAWLER_WORKERS,
+    DOWNLOAD_WORKERS,
+    parse_arguments,
+    prepare_headers,
+)
 from src.crawler.crawler import Crawler
 from src.crawler.crawler_utils import extract_download_link
 from src.download_utils import (
@@ -72,11 +78,16 @@ def download_episode(
             break
 
 
-def process_video_url(video_url: str, download_path: str, task_info: tuple) -> None:
-    """Process an embed URL to extract episode download links."""
+def resolve_download_link(video_url: str) -> str | None:
+    """Resolve a video URL's direct download link, without downloading it."""
     soup = fetch_page(video_url)
     script_items = soup.find_all("script")
-    download_link = extract_download_link(script_items, video_url)
+    return extract_download_link(script_items, video_url)
+
+
+def process_video_url(video_url: str, download_path: str, task_info: tuple) -> None:
+    """Process an embed URL to extract episode download links."""
+    download_link = resolve_download_link(video_url)
     download_episode(download_link, download_path, task_info)
 
 
@@ -103,25 +114,33 @@ def download_anime(
 def print_check_report(
     anime_name: str,
     num_episodes: int,
-    matched_numbers: list[str],
+    episode_links: list[tuple[str, str | None]],
 ) -> None:
-    """Print a summary of an anime URL without downloading anything."""
+    """Print a summary of an anime URL, listing every resolved download link."""
     console = Console()
     console.print(f"[b]{anime_name}[/b]")
     console.print(f"Total episodes available: {num_episodes}")
-    console.print(f"Episodes matching filters: {len(matched_numbers)}")
-    if matched_numbers:
-        console.print(f"Episode numbers: {', '.join(matched_numbers)}")
+    console.print(f"Episodes matching filters: {len(episode_links)}")
+    for number, link in episode_links:
+        shown_link = link or "[red]could not resolve link[/red]"
+        console.print(f"Episode {number}: {shown_link}")
+
+
+def _resolve_episode_link(episode_video_url: tuple[str, str]) -> tuple[str, str | None]:
+    """Resolve a single (episode number, video URL) pair to its download link."""
+    number, video_url = episode_video_url
+    return number, resolve_download_link(video_url)
 
 
 async def check_anime_download(
     url: str,
     filters: EpisodeFilters = EpisodeFilters(),
 ) -> None:
-    """Validate a URL and report the anime name and matching episodes.
+    """Validate a URL and report the anime name and every resolved download link.
 
-    Unlike `process_anime_download`, this doesn't resolve embed pages or
-    download any file, so it's safe to use as a quick preview.
+    Unlike `process_anime_download`, this never downloads any file, so it's
+    safe to use as a preview, but it does resolve each matching episode's
+    embed and video pages to find its direct download link.
     """
     soup = fetch_page_httpx(url)
     crawler = Crawler(
@@ -131,8 +150,12 @@ async def check_anime_download(
         episodes=filters.episodes,
     )
     anime_name = crawler.extract_anime_name(soup, url)
-    matched_numbers = await crawler.get_matching_episode_numbers()
-    print_check_report(anime_name, crawler.num_episodes, matched_numbers)
+    episode_video_urls = await crawler.collect_episode_video_urls()
+
+    with ThreadPoolExecutor(max_workers=CRAWLER_WORKERS) as executor:
+        episode_links = list(executor.map(_resolve_episode_link, episode_video_urls))
+
+    print_check_report(anime_name, crawler.num_episodes, episode_links)
 
 
 async def process_anime_download(

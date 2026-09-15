@@ -26,7 +26,7 @@ Batch download from `URLs.txt` (one URL per line in the repo root; the file is c
 python3 main.py [--custom-path /path/to/dir]
 ```
 
-Preview a URL without downloading (`--check`, valid on both entry points): validates the URL and prints the anime name, total episode count, and which episodes match `--start`/`--end`/`--episodes`. In `main.py`, `--check` also skips clearing `URLs.txt`.
+Preview a URL without downloading (`--check`, valid on both entry points): validates the URL, prints the anime name and total episode count, and resolves and prints the direct download link for every episode matching `--start`/`--end`/`--episodes` (it does the same embed/video-page resolution as a real download, it just never fetches the file itself). In `main.py`, `--check` also skips clearing `URLs.txt`.
 ```bash
 python3 anime_downloader.py <anime_url> --check [--start N] [--end N] [--episodes 1,3,7]
 python3 main.py --check
@@ -56,9 +56,11 @@ Pipeline for a single anime (`process_anime_download` in `anime_downloader.py`):
 1. `src/general_utils.fetch_page_httpx` fetches the anime's landing page.
 2. `src/crawler/crawler.py::Crawler` is constructed from the URL: it derives the AnimeUnity `info_api` URL, fetches the total episode count, and extracts the anime name (`Crawler.extract_anime_name`, with several fallback strategies: title tag → `<title>` → `og:title` meta → URL slug).
 3. `src/file_utils.create_download_directory` creates `Downloads/<sanitized anime name>/` (or `<custom_path>/Downloads/...`).
-4. `Crawler.collect_video_urls` (async): fetches episode IDs from the info API in batches of `BATCH_SIZE` (120, to avoid request failures on long series), filters them by `--episodes` or `--start`/`--end` range via the shared `Crawler._get_matching_episodes` helper, builds `embed-url/<id>` URLs, and concurrently resolves each to a real video URL (bounded by `CRAWLER_WORKERS` via an `asyncio.Semaphore`). `Crawler.get_matching_episode_numbers` reuses the same filtering helper but stops before resolving embed URLs, which is what powers `--check` (see `anime_downloader.check_anime_download`).
+4. `Crawler.collect_episode_video_urls` (async): fetches episode IDs from the info API in batches of `BATCH_SIZE` (120, to avoid request failures on long series), filters them by `--episodes` or `--start`/`--end` range via the shared `Crawler._get_matching_episodes` helper, builds `embed-url/<id>` URLs, and concurrently resolves each to a real (episode number, video URL) pair (bounded by `CRAWLER_WORKERS` via an `asyncio.Semaphore`). `Crawler.collect_video_urls` is a thin wrapper that drops the episode numbers, for the download path.
 5. `download_anime` runs `src/download_utils.run_in_parallel` in a `ThreadPoolExecutor` (bounded by the `workers` argument, which flows from `--parallel-downloads` down through `process_anime_download` → `download_anime` → `run_in_parallel`; defaults to `DOWNLOAD_WORKERS`) inside a `rich.live.Live` context to download each episode with a per-episode and overall progress bar (`src/progress_utils.py`).
-6. Each episode download (`download_episode` → `process_video_url` → `extract_download_link`) fetches the embed page, regex-extracts `window.downloadUrl` from inline scripts (`src/config.DOWNLOAD_LINK_PATTERN`), then streams the file to disk with a chunk size chosen by file size (`src/download_utils.get_chunk_size`, thresholds in `src/config.THRESHOLDS`).
+6. Each episode download (`download_episode` → `process_video_url` → `resolve_download_link` → `extract_download_link`) fetches the embed page, regex-extracts `window.downloadUrl` from inline scripts (`src/config.DOWNLOAD_LINK_PATTERN`), then streams the file to disk with a chunk size chosen by file size (`src/download_utils.get_chunk_size`, thresholds in `src/config.THRESHOLDS`).
+
+`--check` (`anime_downloader.check_anime_download`) reuses `Crawler.collect_episode_video_urls` (step 4 above), then resolves each video URL's final direct download link the same way a real download would (`anime_downloader.resolve_download_link`, the same helper `process_video_url` calls) via a `ThreadPoolExecutor` bounded by `CRAWLER_WORKERS` — but stops there instead of calling `download_episode`, so no file is ever fetched.
 
 Networking / anti-bot handling (`src/general_utils.py`, `src/crawler/crawler_utils.py`):
 - Requests use rotating fake user agents (`src/config.prepare_headers`, via `fake_useragent`).

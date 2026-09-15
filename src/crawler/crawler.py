@@ -67,23 +67,20 @@ class Crawler:
         self.episodes = episodes
         self.semaphore = asyncio.Semaphore(CRAWLER_WORKERS)
 
-    async def collect_video_urls(self) -> list[str]:
-        """Collect a list of video URLs by concurrently fetching each embed URL."""
+    async def collect_episode_video_urls(self) -> list[tuple[str, str]]:
+        """Collect (episode number, video URL) pairs for the matching episodes."""
         matching_episodes = await self._get_matching_episodes()
         episode_ids = [episode[0] for episode in matching_episodes]
         embed_urls = self._generate_episode_embed_urls(episode_ids)
         tasks = [self._get_video_url(embed_url) for embed_url in embed_urls]
-        return await asyncio.gather(*tasks)
+        video_urls = await asyncio.gather(*tasks)
+        episode_numbers = [episode[1] for episode in matching_episodes]
+        return list(zip(episode_numbers, video_urls, strict=True))
 
-    async def get_matching_episode_numbers(self) -> list[str]:
-        """Return the episode numbers matching the configured filters.
-
-        Unlike `collect_video_urls`, this does not resolve embed pages to video
-        URLs, so it can be used to preview a download without fetching any
-        episode page.
-        """
-        matching_episodes = await self._get_matching_episodes()
-        return [episode[1] for episode in matching_episodes]
+    async def collect_video_urls(self) -> list[str]:
+        """Collect a list of video URLs by concurrently fetching each embed URL."""
+        episode_video_urls = await self.collect_episode_video_urls()
+        return [video_url for _, video_url in episode_video_urls]
 
     # Static methods
     @staticmethod
