@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -65,20 +66,46 @@ def save_file_with_progress(
             if chunk:
                 file.write(chunk)
                 total_downloaded += len(chunk)
-                progress_percentage = (total_downloaded / file_size) * 100
-                job_progress.update(task, completed=progress_percentage)
+                if file_size > 0:
+                    progress_percentage = (total_downloaded / file_size) * 100
+                    job_progress.update(task, completed=progress_percentage)
 
     job_progress.update(task, completed=100, visible=False)
     job_progress.advance(overall_task)
 
 
 def manage_running_tasks(futures: dict, job_progress: Progress) -> None:
-    """Manage the status of running tasks and update their progress."""
+    """Manage the status of running tasks and update their progress.
+
+    A future that finishes before it's ever observed as "running" (e.g. a
+    near-instant failure) would otherwise never be popped here, since a
+    completed future's `.running()` is also False — hanging this function
+    forever. `.done()` covers that case too.
+    """
     while futures:
         for future in list(futures.keys()):
-            if future.running():
+            if future.running() or future.done():
                 task = futures.pop(future)
                 job_progress.update(task, visible=True)
+
+        if futures:
+            time.sleep(0.05)
+
+
+def _count_failures(futures: list) -> int:
+    """Count futures that raised or returned a falsy (unsuccessful) result."""
+    failures = 0
+    for future in futures:
+        try:
+            if not future.result():
+                failures += 1
+
+        except Exception:  # pylint: disable=broad-exception-caught
+            # A single worker task failing must never crash the whole batch.
+            logging.exception("A download task failed unexpectedly")
+            failures += 1
+
+    return failures
 
 
 def run_in_parallel(
@@ -87,10 +114,16 @@ def run_in_parallel(
     job_progress: Progress,
     *args: tuple,
     workers: int = DOWNLOAD_WORKERS,
-) -> None:
-    """Execute a function in parallel for a list of items, updating progress."""
+) -> int:
+    """Execute a function in parallel for a list of items, updating progress.
+
+    `func` is expected to return a truthy value on success. Returns the
+    number of items that failed (raised or returned a falsy value), instead
+    of letting individual failures pass by unnoticed.
+    """
     num_items = len(items)
     futures = {}
+    all_futures = []
 
     with ThreadPoolExecutor(max_workers=workers) as executor:
         overall_task = job_progress.add_task(
@@ -105,4 +138,7 @@ def run_in_parallel(
             task_info = (job_progress, task, overall_task)
             future = executor.submit(func, item, *args, task_info)
             futures[future] = task
+            all_futures.append(future)
             manage_running_tasks(futures, job_progress)
+
+    return _count_failures(all_futures)

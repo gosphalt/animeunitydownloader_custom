@@ -11,7 +11,6 @@ import gzip
 import logging
 import os
 import random
-import sys
 import time
 
 import brotli
@@ -115,8 +114,13 @@ def decompress_response(response: requests.Response) -> str:
     return response.text
 
 
-def fetch_page(url: str, timeout: int = 10) -> BeautifulSoup:
-    """Fetch the HTML content of a webpage with better bot detection avoidance."""
+def fetch_page(url: str, timeout: int = 10) -> BeautifulSoup | None:
+    """Fetch the HTML content of a webpage with better bot detection avoidance.
+
+    Returns None on unrecoverable failure instead of raising, since this runs
+    inside worker threads/tasks where a single episode's failure shouldn't
+    take down the whole batch.
+    """
     # Add random delay to avoid bot detection
     add_random_delay()
 
@@ -158,11 +162,11 @@ def fetch_page(url: str, timeout: int = 10) -> BeautifulSoup:
             except requests.exceptions.RequestException as cf_err:
                 log_message = f"Cloudscraper fallback failed for {url}: {cf_err}"
                 logging.exception(log_message)
-                sys.exit(1)
+                return None
 
         message = f"Error fetching page {url}: {req_err}"
         logging.warning(message)
-        sys.exit(1)
+        return None
 
 
 def fetch_page_httpx(url: str, timeout: int = 10) -> BeautifulSoup:
