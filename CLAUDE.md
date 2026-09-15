@@ -8,10 +8,12 @@ A Python CLI tool that downloads anime episodes from AnimeUnity (`animeunity.so`
 
 ## Commands
 
-Install dependencies:
+Set up a virtual environment and install dependencies (`.venv` is already gitignored):
 ```bash
-pip install -r requirements.txt
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
 ```
+Then either prefix commands with `.venv/bin/python`/`.venv/bin/pip`, or `source .venv/bin/activate` first and use `python`/`pip` directly.
 
 Download a single anime (optionally a range or specific episode list):
 ```bash
@@ -36,9 +38,9 @@ python3 anime_downloader.py <anime_url> --parallel-downloads 5
 python3 main.py --parallel-downloads 5
 ```
 
-Lint (CI runs Pylint over all tracked `.py` files, see `.github/workflows/pylint.yml`):
+Lint (CI runs Pylint over all tracked `.py` files, see `.github/workflows/pylint.yml`; requires `pip install pylint` in the venv, it's not in `requirements.txt`):
 ```bash
-python -m pylint $(git ls-files '*.py')
+.venv/bin/python -m pylint $(git ls-files '*.py')
 ```
 CONTRIBUTING.md also documents a Ruff-based style (`ruff check .`, `select = ["ALL"]`, line-length 88), but no `ruff.toml` is currently checked in — CI enforcement is Pylint only.
 
