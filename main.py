@@ -12,6 +12,7 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from anime_downloader import (
     check_anime_download,
@@ -29,13 +30,31 @@ async def process_urls(
     *,
     check: bool = False,
     workers: int = DOWNLOAD_WORKERS,
-) -> None:
-    """Validate and downloads items for a list of URLs."""
+) -> list[str]:
+    """Validate and download items for a list of URLs.
+
+    A URL that fails doesn't abort the rest of the batch. Returns the URLs
+    that failed, so the caller can keep them queued instead of silently
+    losing track of them.
+    """
+    failed_urls = []
     for url in urls:
-        if check:
-            await check_anime_download(url)
-        else:
-            await process_anime_download(url, custom_path=custom_path, workers=workers)
+        try:
+            if check:
+                await check_anime_download(url)
+            else:
+                await process_anime_download(
+                    url,
+                    custom_path=custom_path,
+                    workers=workers,
+                )
+
+        except Exception:  # pylint: disable=broad-exception-caught
+            # One bad URL must never abort the rest of the batch.
+            logging.exception("Failed to process %s", url)
+            failed_urls.append(url)
+
+    return failed_urls
 
 
 async def main() -> None:
@@ -46,16 +65,17 @@ async def main() -> None:
 
     # Read and process URLs, ignoring empty lines
     urls = [url.strip() for url in read_file(URLS_FILE) if url.strip()]
-    await process_urls(
+    failed_urls = await process_urls(
         urls,
         custom_path=args.custom_path,
         check=args.check,
         workers=args.parallel_downloads,
     )
 
-    # Clear URLs file, unless this was just a preview
+    # Clear URLs file, unless this was just a preview; keep any URL that
+    # failed so it isn't silently dropped from the queue.
     if not args.check:
-        write_file(URLS_FILE)
+        write_file(URLS_FILE, "\n".join(failed_urls))
 
 
 if __name__ == "__main__":

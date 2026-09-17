@@ -184,16 +184,25 @@ async def fetch_with_retries(
 
             except httpx.HTTPStatusError as https_err:
                 if https_err.response.status_code == HTTP_STATUS_FORBIDDEN:
-                    await retry_or_fallback(attempt, min_delay=1.0, max_delay=3.0)
+                    fallback = await retry_or_fallback(
+                        attempt,
+                        min_delay=1.0,
+                        max_delay=3.0,
+                    )
+                    if fallback is not None:
+                        return fallback
 
                 elif attempt < retries - 1:
                     delay = 2 ** attempt + random.uniform(1, 2)  # noqa: S311
                     await asyncio.sleep(delay)
 
             except httpx.RequestError:
-                await retry_or_fallback(attempt)
+                fallback = await retry_or_fallback(attempt)
+                if fallback is not None:
+                    return fallback
 
-            return response
+            else:
+                return response
 
     return None
 

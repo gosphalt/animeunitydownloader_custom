@@ -145,6 +145,7 @@ https://www.animeunity.so/anime/2598-made-in-abyss
 
 - Ensure that each URL is on its own line without any extra spaces.
 - You can add as many URLs as you need, following the same format.
+- If a URL fails to process, it's left in `URLs.txt` (instead of being cleared) so it stays queued for a retry, while the rest of the batch still completes.
 
 2. Run the main script via the command line:
 

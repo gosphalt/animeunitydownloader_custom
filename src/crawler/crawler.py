@@ -67,7 +67,7 @@ class Crawler:
         self.episodes = episodes
         self.semaphore = asyncio.Semaphore(CRAWLER_WORKERS)
 
-    async def collect_episode_video_urls(self) -> list[tuple[str, str]]:
+    async def collect_episode_video_urls(self) -> list[tuple[str, str | None]]:
         """Collect (episode number, video URL) pairs for the matching episodes."""
         matching_episodes = await self._get_matching_episodes()
         episode_ids = [episode[0] for episode in matching_episodes]
@@ -145,7 +145,7 @@ class Crawler:
         logging.error("URL format is incorrect.")
         return None
 
-    async def _get_episode_ids(self) -> list[tuple[int, str]] | None:
+    async def _get_episode_ids(self) -> list[tuple[int, str]]:
         """Fetch the IDs of all the episodes from an API."""
         episode_api_url = f"{self.api_url}/0"
         all_episode_infos = []
@@ -196,7 +196,7 @@ class Crawler:
             if episode_in_range(episode[1], self.start_episode, self.end_episode)
         ]
 
-    def _generate_episode_embed_urls(self, episode_ids: str) -> list[str]:
+    def _generate_episode_embed_urls(self, episode_ids: list[str]) -> list[str]:
         """Generate a list of embed URLs for a series of episodes."""
         return [
             f"https://{self.host_domain}/embed-url/{episode_id}"

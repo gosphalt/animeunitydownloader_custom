@@ -48,12 +48,20 @@ class EpisodeFilters(NamedTuple):
 
 
 def download_episode(
-    download_link: str,
+    download_link: str | None,
     download_path: str,
     task_info: tuple,
     retries: int = 4,
-) -> None:
-    """Download an episode from the download link and provides progress updates."""
+) -> bool:
+    """Download an episode from the download link and provides progress updates.
+
+    Returns whether the download succeeded. If `download_link` couldn't be
+    resolved, this returns immediately without retrying, since retrying an
+    unresolvable link can only ever fail again.
+    """
+    if download_link is None:
+        return False
+
     for attempt in range(retries):
         try:
             headers = prepare_headers()
@@ -74,20 +82,28 @@ def download_episode(
             filename = get_episode_filename(download_link)
             final_path = Path(download_path) / filename
             save_file_with_progress(response, final_path, task_info)
-            break
+            return True
+
+    return False
 
 
-def resolve_download_link(video_url: str) -> str | None:
+def resolve_download_link(video_url: str | None) -> str | None:
     """Resolve a video URL's direct download link, without downloading it."""
+    if video_url is None:
+        return None
+
     soup = fetch_page(video_url)
+    if soup is None:
+        return None
+
     script_items = soup.find_all("script")
     return extract_download_link(script_items, video_url)
 
 
-def process_video_url(video_url: str, download_path: str, task_info: tuple) -> None:
+def process_video_url(video_url: str, download_path: str, task_info: tuple) -> bool:
     """Process an embed URL to extract episode download links."""
     download_link = resolve_download_link(video_url)
-    download_episode(download_link, download_path, task_info)
+    return download_episode(download_link, download_path, task_info)
 
 
 def download_anime(
@@ -101,13 +117,16 @@ def download_anime(
     progress_table = create_progress_table(anime_name, job_progress)
 
     with Live(progress_table, refresh_per_second=10):
-        run_in_parallel(
+        failures = run_in_parallel(
             process_video_url,
             video_urls,
             job_progress,
             download_path,
             workers=workers,
         )
+
+    if failures:
+        Console().print(f"[red]{failures} episode(s) failed to download.[/red]")
 
 
 def print_check_report(episode_links: list[tuple[str, str | None]]) -> None:
@@ -116,7 +135,9 @@ def print_check_report(episode_links: list[tuple[str, str | None]]) -> None:
         print(link or "")
 
 
-def _resolve_episode_link(episode_video_url: tuple[str, str]) -> tuple[str, str | None]:
+def _resolve_episode_link(
+    episode_video_url: tuple[str, str | None],
+) -> tuple[str, str | None]:
     """Resolve a single (episode number, video URL) pair to its download link."""
     number, video_url = episode_video_url
     return number, resolve_download_link(video_url)
