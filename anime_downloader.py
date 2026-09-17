@@ -19,7 +19,6 @@ from pathlib import Path
 from typing import NamedTuple
 
 import requests
-from rich.console import Console
 from rich.live import Live
 
 from src.config import (
@@ -111,19 +110,10 @@ def download_anime(
         )
 
 
-def print_check_report(
-    anime_name: str,
-    num_episodes: int,
-    episode_links: list[tuple[str, str | None]],
-) -> None:
-    """Print a summary of an anime URL, listing every resolved download link."""
-    console = Console()
-    console.print(f"[b]{anime_name}[/b]")
-    console.print(f"Total episodes available: {num_episodes}")
-    console.print(f"Episodes matching filters: {len(episode_links)}")
-    for number, link in episode_links:
-        shown_link = link or "[red]could not resolve link[/red]"
-        console.print(f"Episode {number}: {shown_link}")
+def print_check_report(episode_links: list[tuple[str, str | None]]) -> None:
+    """Print every resolved download link, one per line."""
+    for _, link in episode_links:
+        print(link or "")
 
 
 def _resolve_episode_link(episode_video_url: tuple[str, str]) -> tuple[str, str | None]:
@@ -136,26 +126,25 @@ async def check_anime_download(
     url: str,
     filters: EpisodeFilters = EpisodeFilters(),
 ) -> None:
-    """Validate a URL and report the anime name and every resolved download link.
+    """Validate a URL and print every resolved download link, one per line.
 
     Unlike `process_anime_download`, this never downloads any file, so it's
     safe to use as a preview, but it does resolve each matching episode's
     embed and video pages to find its direct download link.
     """
-    soup = fetch_page_httpx(url)
+    fetch_page_httpx(url)
     crawler = Crawler(
         url=url,
         start_episode=filters.start_episode,
         end_episode=filters.end_episode,
         episodes=filters.episodes,
     )
-    anime_name = crawler.extract_anime_name(soup, url)
     episode_video_urls = await crawler.collect_episode_video_urls()
 
     with ThreadPoolExecutor(max_workers=CRAWLER_WORKERS) as executor:
         episode_links = list(executor.map(_resolve_episode_link, episode_video_urls))
 
-    print_check_report(anime_name, crawler.num_episodes, episode_links)
+    print_check_report(episode_links)
 
 
 async def process_anime_download(
