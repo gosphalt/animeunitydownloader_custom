@@ -146,8 +146,9 @@ def add_common_arguments(parser: ArgumentParser) -> None:
         "--check",
         action="store_true",
         help=(
-            "Analyze the URL(s) without downloading: show the anime name, the "
-            "total number of episodes, and which ones match the given filters."
+            "Analyze the URL(s) without downloading: print the resolved "
+            "download link for each episode matching the given filters, "
+            "one per line."
         ),
     )
     parser.add_argument(
