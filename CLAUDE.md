@@ -26,7 +26,7 @@ Batch download from `URLs.txt` (one URL per line in the repo root; the file is c
 python3 main.py [--custom-path /path/to/dir]
 ```
 
-Preview a URL without downloading (`--check`, valid on both entry points): validates the URL, prints the anime name and total episode count, and resolves and prints the direct download link for every episode matching `--start`/`--end`/`--episodes` (it does the same embed/video-page resolution as a real download, it just never fetches the file itself). In `main.py`, `--check` also skips clearing `URLs.txt`.
+Preview a URL without downloading (`--check`, valid on both entry points): validates the URL and resolves the direct download link for every episode matching `--start`/`--end`/`--episodes`, printing one link per line and nothing else (it does the same embed/video-page resolution as a real download, it just never fetches the file itself). In `main.py`, `--check` also skips clearing `URLs.txt`.
 ```bash
 python3 anime_downloader.py <anime_url> --check [--start N] [--end N] [--episodes 1,3,7]
 python3 main.py --check

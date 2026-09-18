@@ -116,7 +116,7 @@ This is useful when you already have some episodes and only need to download the
 
 ## Analyzing Links Before Downloading
 
-To check a URL without downloading anything, add the `--check` flag. This validates the URL, prints the anime name, the total number of episodes available, and, for every episode matching the given filters (`--start`/`--end`/`--episodes`), its resolved direct download link.
+To check a URL without downloading anything, add the `--check` flag. This validates the URL and, for every episode matching the given filters (`--start`/`--end`/`--episodes`), prints its resolved direct download link, one per line.
 
 ```bash
 python3 anime_downloader.py https://www.animeunity.so/anime/1517-yuru-yuri --check
