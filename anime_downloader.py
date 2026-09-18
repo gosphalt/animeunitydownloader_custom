@@ -185,10 +185,10 @@ def _is_movie(record: dict, num_episodes: int) -> bool:
     return num_episodes == 1
 
 
-def write_movie_file(title: str, output_dir: str) -> Path:
-    """Write a file containing only the movie's title."""
+def write_movie_file(title: str, link: str | None, output_dir: str) -> Path:
+    """Write a file containing the movie's title and its resolved download link."""
     final_path = Path(output_dir) / f"{sanitize_directory_name(title)}.txt"
-    final_path.write_text(title, encoding="utf-8")
+    final_path.write_text(f"{title}\n{link or ''}\n", encoding="utf-8")
     return final_path
 
 
@@ -225,12 +225,13 @@ async def export_search_result(record: dict, output_dir: str) -> None:
     title = record.get("title") or record.get("title_eng") or str(record.get("id"))
     url = build_anime_url(record)
     crawler = Crawler(url=url, start_episode=None, end_episode=None, episodes=None)
+    episode_records = await crawler.collect_episode_records()
 
     if _is_movie(record, crawler.num_episodes):
-        write_movie_file(title, output_dir)
+        video_url = episode_records[0][2] if episode_records else None
+        link = resolve_download_link(video_url)
+        write_movie_file(title, link, output_dir)
         return
-
-    episode_records = await crawler.collect_episode_records()
 
     with ThreadPoolExecutor(max_workers=CRAWLER_WORKERS) as executor:
         resolved_records = list(executor.map(_resolve_episode_record, episode_records))

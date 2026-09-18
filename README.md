@@ -163,7 +163,7 @@ python3 anime_downloader.py --search "yuru yuri"
 
 For each match, one file is created in a `Search` folder (or `<custom_path>/Search` with `--custom-path`):
 
-- **Movies**: a `.txt` file named after the title, containing just the title.
+- **Movies**: a `.txt` file named after the title, containing the title on the first line and the resolved download link on the second.
 - **Series**: a `.csv` file named after the title, with one row per episode: `numero stagione`, `numero episodio`, `titolo episodio`, `link file`. AnimeUnity doesn't expose an explicit season number, so it's guessed from the title (e.g. "2nd Season", "Stagione 2") and defaults to `1` when nothing matches.
 
 `--search` is mutually exclusive with passing a URL, and `--start`/`--end`/`--episodes`/`--check`/`--parallel-downloads` don't apply to it — it always resolves every episode of every match.
