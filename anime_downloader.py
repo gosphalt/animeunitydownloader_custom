@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 import requests
+from rich.console import Console
 from rich.live import Live
 
 from src.config import (
