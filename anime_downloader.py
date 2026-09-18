@@ -12,6 +12,8 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import csv
+import logging
 import random
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -35,9 +37,14 @@ from src.download_utils import (
     run_in_parallel,
     save_file_with_progress,
 )
-from src.file_utils import create_download_directory
+from src.file_utils import (
+    create_download_directory,
+    create_search_output_directory,
+    sanitize_directory_name,
+)
 from src.general_utils import clear_terminal, fetch_page, fetch_page_httpx
 from src.progress_utils import create_progress_bar, create_progress_table
+from src.search_utils import build_anime_url, guess_season_number, search_titles
 
 
 class EpisodeFilters(NamedTuple):
@@ -179,6 +186,99 @@ async def check_anime_download(
     print_check_report(anime_name, crawler.num_episodes, episode_links)
 
 
+def _is_movie(record: dict, num_episodes: int) -> bool:
+    """Best-effort movie/series detection from a search record and episode count."""
+    record_type = (record.get("type") or "").strip().lower()
+    if record_type:
+        return record_type == "movie"
+
+    return num_episodes == 1
+
+
+def write_movie_file(title: str, output_dir: str) -> Path:
+    """Write a file containing only the movie's title."""
+    final_path = Path(output_dir) / f"{sanitize_directory_name(title)}.txt"
+    final_path.write_text(title, encoding="utf-8")
+    return final_path
+
+
+def write_series_file(
+    title: str,
+    season: int,
+    episode_records: list[tuple[str, str, str | None]],
+    output_dir: str,
+) -> Path:
+    """Write a CSV file listing every episode: season, episode, title, link."""
+    final_path = Path(output_dir) / f"{sanitize_directory_name(title)}.csv"
+
+    with final_path.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        writer.writerow(
+            ["numero stagione", "numero episodio", "titolo episodio", "link file"],
+        )
+        for number, episode_title, link in episode_records:
+            writer.writerow([season, number, episode_title, link or ""])
+
+    return final_path
+
+
+def _resolve_episode_record(
+    episode: tuple[str, str, str | None],
+) -> tuple[str, str, str | None]:
+    """Resolve a single (number, title, video URL) triple to its download link."""
+    number, episode_title, video_url = episode
+    return number, episode_title, resolve_download_link(video_url)
+
+
+async def export_search_result(record: dict, output_dir: str) -> None:
+    """Resolve one search result's episodes/links and write them to a file."""
+    title = record.get("title") or record.get("title_eng") or str(record.get("id"))
+    url = build_anime_url(record)
+    crawler = Crawler(url=url, start_episode=None, end_episode=None, episodes=None)
+
+    if _is_movie(record, crawler.num_episodes):
+        write_movie_file(title, output_dir)
+        return
+
+    episode_records = await crawler.collect_episode_records()
+
+    with ThreadPoolExecutor(max_workers=CRAWLER_WORKERS) as executor:
+        resolved_records = list(executor.map(_resolve_episode_record, episode_records))
+
+    season = guess_season_number(title)
+    write_series_file(title, season, resolved_records, output_dir)
+
+
+async def search_and_export(query: str, custom_path: str | None = None) -> None:
+    """Search AnimeUnity for `query` and export every match's links to a file.
+
+    Each match becomes its own file in the output directory: just the title
+    for a movie, or a CSV of every episode's season/number/title/link for a
+    series. One bad result doesn't stop the rest from being exported.
+    """
+    console = Console()
+    results = search_titles(query)
+
+    if not results:
+        console.print(f"[yellow]No results found for '{query}'.[/yellow]")
+        return
+
+    output_dir = create_search_output_directory(custom_path=custom_path)
+    exported = 0
+    for record in results:
+        try:
+            await export_search_result(record, output_dir)
+            exported += 1
+
+        except Exception:  # pylint: disable=broad-exception-caught
+            # One bad result must never abort exporting the rest.
+            logging.exception("Failed to export search result: %r", record)
+
+    console.print(
+        f"[green]Exported {exported}/{len(results)} result(s) to {output_dir}[/green]",
+    )
+
+
 async def process_anime_download(
     url: str,
     filters: EpisodeFilters = EpisodeFilters(),
@@ -218,6 +318,11 @@ async def main() -> None:
     """Execute the script to download anime episodes from a given AnimeUnity URL."""
     clear_terminal()
     args = parse_arguments()
+
+    if args.search:
+        await search_and_export(args.search, custom_path=args.custom_path)
+        return
+
     episodes = parse_episodes_list(args.episodes)
     filters = EpisodeFilters(args.start, args.end, episodes)
 

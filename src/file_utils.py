@@ -12,7 +12,7 @@ import re
 import sys
 from pathlib import Path
 
-from .config import DOWNLOAD_FOLDER
+from .config import DOWNLOAD_FOLDER, SEARCH_RESULTS_FOLDER
 
 
 def read_file(filename: str) -> list[str]:
@@ -63,3 +63,22 @@ def create_download_directory(
         sys.exit(1)
 
     return download_path
+
+
+def create_search_output_directory(custom_path: str | None = None) -> str:
+    """Create the flat directory where --search link files are exported, if needed."""
+    output_path = (
+        Path(custom_path) / SEARCH_RESULTS_FOLDER
+        if custom_path is not None
+        else Path(SEARCH_RESULTS_FOLDER)
+    )
+
+    try:
+        Path(output_path).mkdir(parents=True, exist_ok=True)
+
+    except OSError as os_err:
+        message = f"Error creating directory: {os_err}"
+        logging.exception(message)
+        sys.exit(1)
+
+    return output_path

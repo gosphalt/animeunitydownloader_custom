@@ -13,8 +13,15 @@ from .version import get_version_string
 # ============================
 # Paths and Files
 # ============================
-DOWNLOAD_FOLDER = "Downloads"  # The folder where downloaded files will be stored.
-URLS_FILE = "URLs.txt"         # The file containing URLs to process.
+DOWNLOAD_FOLDER = "Downloads"      # The folder where downloaded files will be stored.
+URLS_FILE = "URLs.txt"             # The file containing URLs to process.
+SEARCH_RESULTS_FOLDER = "Search"   # The folder where --search link files are exported.
+
+# ============================
+# Search
+# ============================
+# Default AnimeUnity domain, used for --search since it has no URL to derive one from.
+BASE_DOMAIN = "www.animeunity.so"
 
 # ============================
 # Regex Patterns
@@ -165,7 +172,24 @@ def setup_parser(
     parser = ArgumentParser(description="Command-line arguments.")
 
     if include_url:
-        parser.add_argument("url", type=str, help="The URL to process")
+        target_group = parser.add_mutually_exclusive_group(required=True)
+        target_group.add_argument(
+            "url",
+            type=str,
+            nargs="?",
+            default=None,
+            help="The URL to process.",
+        )
+        target_group.add_argument(
+            "--search",
+            type=str,
+            default=None,
+            help=(
+                "Search AnimeUnity for a title instead of downloading a URL: "
+                "exports every matching title's episode/video links to a file "
+                "(one per title), without downloading any video."
+            ),
+        )
 
     if include_filters:
         parser.add_argument(

@@ -67,15 +67,22 @@ class Crawler:
         self.episodes = episodes
         self.semaphore = asyncio.Semaphore(CRAWLER_WORKERS)
 
-    async def collect_episode_video_urls(self) -> list[tuple[str, str | None]]:
-        """Collect (episode number, video URL) pairs for the matching episodes."""
+    async def collect_episode_records(self) -> list[tuple[str, str, str | None]]:
+        """Collect (episode number, episode title, video URL) triples for matches."""
         matching_episodes = await self._get_matching_episodes()
         episode_ids = [episode[0] for episode in matching_episodes]
         embed_urls = self._generate_episode_embed_urls(episode_ids)
         tasks = [self._get_video_url(embed_url) for embed_url in embed_urls]
         video_urls = await asyncio.gather(*tasks)
-        episode_numbers = [episode[1] for episode in matching_episodes]
-        return list(zip(episode_numbers, video_urls, strict=True))
+        return [
+            (episode[1], episode[2], video_url)
+            for episode, video_url in zip(matching_episodes, video_urls, strict=True)
+        ]
+
+    async def collect_episode_video_urls(self) -> list[tuple[str, str | None]]:
+        """Collect (episode number, video URL) pairs for the matching episodes."""
+        episode_records = await self.collect_episode_records()
+        return [(number, video_url) for number, _, video_url in episode_records]
 
     async def collect_video_urls(self) -> list[str]:
         """Collect a list of video URLs by concurrently fetching each embed URL."""
@@ -145,8 +152,8 @@ class Crawler:
         logging.error("URL format is incorrect.")
         return None
 
-    async def _get_episode_ids(self) -> list[tuple[int, str]]:
-        """Fetch the IDs of all the episodes from an API."""
+    async def _get_episode_ids(self) -> list[tuple[int, str, str]]:
+        """Fetch the (id, number, title) of all the episodes from an API."""
         episode_api_url = f"{self.api_url}/0"
         all_episode_infos = []
         start_range = 0
@@ -175,10 +182,13 @@ class Crawler:
                 episode_infos = response_json.get("episodes", [])
                 all_episode_infos.extend(episode_infos)
 
-        return [(info["id"], info["number"]) for info in all_episode_infos]
+        return [
+            (info["id"], info["number"], info.get("name") or "")
+            for info in all_episode_infos
+        ]
 
-    async def _get_matching_episodes(self) -> list[tuple[int, str]]:
-        """Retrieve the (id, number) pairs matching the configured filters."""
+    async def _get_matching_episodes(self) -> list[tuple[int, str, str]]:
+        """Retrieve the (id, number, title) triples matching the configured filters."""
         episodes = await self._get_episode_ids()
         if self.episodes:
             episodes_set = {float(episode) for episode in self.episodes}

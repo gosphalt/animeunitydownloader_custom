@@ -153,6 +153,21 @@ https://www.animeunity.so/anime/2598-made-in-abyss
 python3 main.py
 ```
 
+## Search
+
+Instead of a URL, you can pass `--search "<query>"` to `anime_downloader.py` to search AnimeUnity's catalog and export every matching title's video links to a file, without downloading anything.
+
+```bash
+python3 anime_downloader.py --search "yuru yuri"
+```
+
+For each match, one file is created in a `Search` folder (or `<custom_path>/Search` with `--custom-path`):
+
+- **Movies**: a `.txt` file named after the title, containing just the title.
+- **Series**: a `.csv` file named after the title, with one row per episode: `numero stagione`, `numero episodio`, `titolo episodio`, `link file`. AnimeUnity doesn't expose an explicit season number, so it's guessed from the title (e.g. "2nd Season", "Stagione 2") and defaults to `1` when nothing matches.
+
+`--search` is mutually exclusive with passing a URL, and `--start`/`--end`/`--episodes`/`--check`/`--parallel-downloads` don't apply to it — it always resolves every episode of every match.
+
 ## File Download Location
 
 If the `--custom-path <custom_path>` argument is used, the downloaded files will be saved in `<custom_path>/Downloads`. Otherwise, the files will be saved in a `Downloads` folder created within the script's directory
