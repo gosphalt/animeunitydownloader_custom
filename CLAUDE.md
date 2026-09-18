@@ -42,7 +42,7 @@ Search AnimeUnity's catalog instead of downloading a URL (`--search`, `anime_dow
 ```bash
 python3 anime_downloader.py --search "yuru yuri"
 ```
-The search itself (`src/search_utils.search_titles`, a `POST /livesearch` with `{"title": query}`) couldn't be verified against the live site from this environment — if it doesn't return results, that request/response shape is the first thing to check.
+The search itself (`src/search_utils.search_titles`, a `POST /livesearch` with `{"title": query}`, preceded by a homepage GET for a CSRF token — see below) couldn't be verified against the live site from this environment — if it doesn't return results, that request/response shape (and the token/cookie names it looks for) is the first thing to check.
 
 Lint (CI runs Pylint over all tracked `.py` files, see `.github/workflows/pylint.yml`; requires `pip install pylint` in the venv, it's not in `requirements.txt`):
 ```bash
@@ -69,7 +69,7 @@ Pipeline for a single anime (`process_anime_download` in `anime_downloader.py`):
 `--check` (`anime_downloader.check_anime_download`) reuses `Crawler.collect_episode_video_urls` (step 4 above), then resolves each video URL's final direct download link the same way a real download would (`anime_downloader.resolve_download_link`, the same helper `process_video_url` calls) via a `ThreadPoolExecutor` bounded by `CRAWLER_WORKERS` — but stops there instead of calling `download_episode`, so no file is ever fetched.
 
 `--search` (`anime_downloader.search_and_export`) is the other flow that never downloads a file:
-1. `src/search_utils.search_titles` posts the query to AnimeUnity's `/livesearch` and returns the raw list of matching catalog records (`id`, `slug`, `title`, `type`, `episodes_count`, ...).
+1. `src/search_utils.search_titles` posts the query to AnimeUnity's `/livesearch` and returns the raw list of matching catalog records (`id`, `slug`, `title`, `type`, `episodes_count`, ...). `/livesearch` is a Laravel POST endpoint that 419s ("Page Expired") without a valid CSRF token for the session, so `search_titles` first GETs the homepage with a shared `requests.Session` (`_get_csrf_token`) to pick up a session cookie plus a token — either the `XSRF-TOKEN` cookie (sent back as `X-XSRF-TOKEN`) or a `<meta name="csrf-token">` tag (sent back as `X-CSRF-TOKEN`, a different header since Laravel treats the two differently) — then reuses that same session for the POST so the cookie travels along.
 2. For each record, `export_search_result` builds an anime URL (`search_utils.build_anime_url`, `https://<BASE_DOMAIN>/anime/<id>-<slug>`) and constructs a `Crawler` for it with no filters (every episode).
 3. `_is_movie` decides movie vs. series from the record's `type` field (falls back to `num_episodes == 1` if `type` is missing/unrecognized). A movie gets `write_movie_file` (just the title, in a `.txt`); a series calls `Crawler.collect_episode_records` (the `(number, title, video_url)` triples added for this feature — `collect_episode_video_urls` is now implemented on top of it, dropping the title) and resolves each video URL's download link via `resolve_download_link` in a `ThreadPoolExecutor`, then `write_series_file` writes the CSV. `search_utils.guess_season_number` regexes the title for a season marker, defaulting to `1`.
 4. `search_and_export` does this once per record, catching (and logging, not raising) any single record's failure so one bad result doesn't stop the rest — same non-fatal-failure philosophy as the rest of the pipeline.
